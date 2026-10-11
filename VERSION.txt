@@ -1,0 +1,4 @@
+HPC-LSH release snapshot
+pipeline_version: cpp-default-v8-phase1-d2-src
+reference_run: 48M cold build + search, workers=1 (w1)
+env: env/hpc_v8_phase1_d2.env (HPC_BUILD_V8=1, HPC_V8_SPLIT_UNION_SET=1, HPC_DEPTH_EXTRA_L=15)

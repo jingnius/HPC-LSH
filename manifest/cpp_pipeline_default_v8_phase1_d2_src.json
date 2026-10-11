@@ -1,0 +1,266 @@
+{
+  "pipeline_version": "cpp-default-v8-phase1-d2-src",
+  "default_workers": 6,
+  "default_n_bands": 25,
+  "default_bands_spec": "0-24",
+  "default_run_dir": "work/artifacts/N60000",
+  "default_target_file": "data/target_60000.json",
+  "default_query_file": "queries/queries_100_topTokenFreq_N60000.json",
+  "native_artifacts_dir": "sig_cpp/refs/N60000",
+  "hpcx_artifacts_dir": "work/artifacts/N60000/hpcx_cpp",
+  "sig_cpp": "sig_cpp",
+  "hpcx_cpp": "hpcx_cpp",
+  "prep": {
+    "language": "C++",
+    "dict_source_env": "HPCX_DICT_SOURCE",
+    "dict_source_default": "cpp",
+    "dict_cpp_token_order": "alphabetical_sorted",
+    "dict_python_fallback": "run_dir/dictionary.obj",
+    "no_pickle_bridge": true,
+    "entrypoint_cpp": "sig_cpp/prep_cli (no --dict)",
+    "entrypoint_python": "sig_cpp/prep_cli --dict",
+    "rebuild_default": true,
+    "reuse_existing_flag": "--reuse-existing",
+    "dict_build_optimizations": {
+      "unordered_set_final_sort": true,
+      "drop_gram_counts_second_pass": true,
+      "target_json_parser": "simdjson (singleheader v3.9.4)",
+      "parallel_token_collect": true,
+      "parallel_threads_env": "DICT_BUILD_THREADS",
+      "output_invariant": "dict.native.bin byte-identical to pre-opt scheme B"
+    }
+  },
+  "memory_policy": {
+    "release_between_phases": true,
+    "phases": [
+      "prep",
+      "sig",
+      "hpc",
+      "search"
+    ],
+    "mechanism": "gc.collect() via cpp_process_utils.release_memory()"
+  },
+  "build": {
+    "execution_model": "per_band_cli_subprocess",
+    "per_band_exit": true,
+    "parallel_scheduler": "ThreadPoolExecutor (workers=6)",
+    "index_one_layout": "csr",
+    "index_one_store": "hpcx_cpp/hpc_index_one_store.cpp",
+    "dim_maps": "on_demand",
+    "build_memory_release": "post_partition",
+    "phases": {
+      "prep": "single prep_cli subprocess",
+      "sig": "25 \u00d7 sig_build_cli (one process per band, exit after build)",
+      "hpc": "25 \u00d7 hpcx_build_cli --from-sig (one process per band, exit after build)"
+    },
+    "orchestrator": "tools/run_cpp_hpc_pipeline.py",
+    "full_orchestrator": "tools/run_cpp_full_pipeline.py"
+  },
+  "search": {
+    "execution_model": "cpp_preprocess_encode_resident_hpc_pool",
+    "encode_backend": "C++ (hpcx_cpp/query_encode.cpp)",
+    "encode_layout": "csr+cids",
+    "encode_parallel": true,
+    "merge": "kway_sorted",
+    "thread_pool": "persistent",
+    "pool_cli": "hpcx_cpp/hpcx_multiband_pool_cli --serve",
+    "pool_wrapper": "tools/hpcx_search_pool.py",
+    "orchestrator": "tools/run_cpp_hpcx_multiband_search.py",
+    "resident_hpc_bands": 25,
+    "parallel_band_workers": 6,
+    "input_protocol": {
+      "tokens": [
+        "string",
+        "..."
+      ]
+    },
+    "timing_included": [
+      "search_parallel_s"
+    ],
+    "timing_excluded": [
+      "load_s_excluded (dict/str2id + sample_orders + 25 HPCX)",
+      "preprocess_s (identity dedup + token\u2192cid + 25-band encode)",
+      "setup_excluded_s (query JSON load in orchestrator)",
+      "query_set_generation (e.g. topTokenFreq top-100)"
+    ],
+    "per_query_search_s": "search_parallel_s",
+    "search_total_s": "sum_q(search_parallel_s)",
+    "optimizations": {
+      "pool": "WorkerPool task-queue; threads reused across queries",
+      "encode": "QueryPreprocessed cids once; CSR code lookup; epoch hit stamp",
+      "hpcx_search_encoded": "TLS BFS scratch; route_children_into; flat mgn lookup; matrix pack scan",
+      "merge": "25-way k-way merge on sorted per-band candidate lists"
+    }
+  },
+  "components": {
+    "prep": "sig_cpp/prep_cli",
+    "dict_build": "sig_cpp/dict_build_cli",
+    "cybuf_pack": "sig_cpp/cybuf_pack_cli",
+    "inver_build": "sig_cpp/inver_build_cli",
+    "signature_build": "sig_cpp/sig_build_cli",
+    "hpcx_build": "hpcx_cpp/hpcx_build_cli --from-sig",
+    "hpc_index_one_store": "hpcx_cpp/hpc_index_one_store.cpp",
+    "query_encode": "hpcx_cpp/query_encode.cpp",
+    "hpcx_search_pool": "hpcx_cpp/hpcx_multiband_pool_cli",
+    "hpcx_search": "tools/run_cpp_hpcx_multiband_search.py",
+    "orchestrator": "tools/run_cpp_hpc_pipeline.py",
+    "full_pipeline": "tools/run_cpp_full_pipeline.py",
+    "scalability": "tools/run_cpp_scalability_test.py"
+  },
+  "gate_scripts": {
+    "dict_build": "sig_cpp/tools/verify_dict_build.py",
+    "inver_build": "sig_cpp/tools/verify_inver_build.py",
+    "cybuf_pack": "sig_cpp/tools/verify_cybuf_pack.py",
+    "prep_e2e": "sig_cpp/tools/verify_prep_e2e.py",
+    "hpcx_search_parity": "tools/verify_cpp_hpcx_multiband_search.py"
+  },
+  "gates_60k": {
+    "verify_dict_build": {
+      "gate_pass": true,
+      "scheme": "B",
+      "idempotent_compare": true,
+      "vocab_vs_dictionary_obj": true,
+      "n_tokens": 375066
+    },
+    "verify_inver_build": {
+      "gate_pass": true,
+      "n_entries": 587991
+    },
+    "verify_cybuf_pack": {
+      "gate_pass": true,
+      "n_cols": 60000
+    },
+    "verify_prep_e2e": {
+      "gate_pass": true,
+      "scheme": "B"
+    },
+    "downstream_byte_parity": {
+      "dict_vs_gate": true,
+      "inver_vs_gate": true,
+      "cybuf_vs_gate": true,
+      "sig_band0_vs_gate": true
+    }
+  },
+  "gates_60k_all_pass": true,
+  "hpc_build_profile": "v8-phase1-d2",
+  "hpc_env_file": "env/hpc_v8_phase1_d2.env",
+  "hpcx_build_cli_default": "hpcx_cpp/hpcx_build_v8.sh",
+  "signature_build": {
+    "cybuf_read": "mmap default (SIG_CYBUF_MMAP=0 or SIG_CYBUF_VECTOR=1 to opt out)",
+    "lazy_inver": "removed",
+    "cli_source": "sig_cpp (no oracle exec for prep/dict/inver/cybuf/sig)"
+  },
+  "supersedes": "cpp-default-v8-phase1-d2",
+  "changes_from_v8_phase1_d2": [
+    "pipeline_version suffix -src: prep/dict/inver/cybuf/sig CLIs from sig_cpp source (no oracle exec)",
+    "sig_build: CYBF mmap by default; lazy inver removed"
+  ],
+  "changes_from_v6": [
+    "v8-phase1-d2 HPC build profile (mmap hits, D2 split union-set)",
+    "full-stack source build pinned as cpp-default-v8-phase1-d2-src"
+  ],
+  "changes_from_v5": [
+    "HpcIndexOneStore: flat CSR col_ids + hit_off + hit_pool (two-pass SIGB load)",
+    "partition build: on-demand nth_hit / dim maps (no prebuilt dim_maps)",
+    "native build: release index_one after partition BFS",
+    "hpc_ct_ops: hpc_adaptive_first1_boundaries_nth for on-demand dim access",
+    "dict_build: unordered_set + one final sort (replaces periodic dedupe+sort)",
+    "dict_build: drop unused gram_counts second pass",
+    "target_json: simdjson parser (shared by dict/inver/cybuf prep)",
+    "dict_build: parallel token collection (DICT_BUILD_THREADS)"
+  ],
+  "changes_from_v4": [
+    "search pool: persistent WorkerPool (task-queue) across queries",
+    "search: parallel 25-band encode in pool",
+    "hpcx_search_encoded: TLS scratch, vector BFS, flat mgn lookup, matrix row pack",
+    "encode: QueryPreprocessed (token\u2192cid once) + CSR code lookup + epoch hit stamp",
+    "merge: k-way sorted union across 25 bands (replaces hash set + sort)"
+  ],
+  "changes_from_v3": [
+    "memory release after each phase (prep/sig/hpc/search)",
+    "build: one CLI subprocess per band, exit after build",
+    "default overwrite rebuild; --reuse-existing to skip",
+    "search: 25 HPCX resident in pool + parallel band workers",
+    "search: C++ query preprocess + 25-band encode (no Python LSH in search path)"
+  ],
+  "search_benchmark_N1500000_w12_100q": {
+    "note": "counts_only, min_hits=5; search_wall_s excludes merge; v6 search path unchanged from v5",
+    "v4_reference": {
+      "preprocess_s": 1.47,
+      "search_wall_s": 11.58,
+      "total_s": 13.05,
+      "n_candidates": 1099896
+    },
+    "v5": {
+      "preprocess_s": 0.99,
+      "search_wall_s": 12.2,
+      "total_s": 13.07,
+      "n_candidates": 1099904
+    }
+  },
+  "build_benchmark_band0_N1500000": {
+    "note": "CSR index_one build; search path unchanged from v5",
+    "artifact_bytes": 210551759,
+    "baseline_artifact_bytes": 210551400,
+    "n_views": 111183,
+    "n_pools": 40,
+    "search_10q_candidate_parity": "10/10 exact",
+    "build_rss_gb": {
+      "before": 2.55,
+      "after": 2.44
+    },
+    "w12_parallel_rss_gb_estimate": {
+      "before": 28,
+      "after": 26
+    }
+  },
+  "build_benchmark_N60000_w1_100q": {
+    "note": "workers=1; fast dict build pinned in v6; full pipeline after dict opt",
+    "result_json": "work/results/scalability_cpp_HPC-LSH_N60000_opt_dict.json",
+    "prf_json": "work/results/scalability_cpp_HPC-LSH_N60000_opt_dict_prf.json",
+    "dict_s": 1.147,
+    "prep_total_s": 2.976,
+    "build_s": 121.484,
+    "search_s": 4.477,
+    "dict_rss_gb": 0.159,
+    "n_tokens": 375066
+  },
+  "scheme_b_eval_60k": {
+    "dict_source": "cpp",
+    "tau": 0.5,
+    "query_file": "queries/queries_100_topTokenFreq_N60000.json",
+    "gt_file": "data/source_queries_10k.json",
+    "baseline": "work/oracle_baseline_placeholder.json",
+    "prf_tolerance": 0.02,
+    "baseline_macro": {
+      "precision": 0.919957,
+      "recall": 0.809005,
+      "f1": 0.860921,
+      "raw_cand_total": 40068
+    },
+    "candidate_macro": {
+      "precision": 0.910178,
+      "recall": 0.81369,
+      "f1": 0.859234,
+      "raw_cand_total": 40901
+    },
+    "opt_dict_macro": {
+      "precision": 0.910178,
+      "recall": 0.81369,
+      "f1": 0.859234,
+      "raw_cand_total": 40901
+    },
+    "delta_vs_baseline": {
+      "precision": -0.009778,
+      "recall": 0.004685,
+      "f1": -0.001687
+    },
+    "delta_vs_candidate_ref": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "gate_pass": true,
+    "search_execution_model": "cpp_preprocess_encode_resident_hpc_pool"
+  }
+}

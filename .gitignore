@@ -1,0 +1,15 @@
+work/
+__pycache__/
+*.pyc
+sig_cpp/*.o
+sig_cpp/prep_cli
+sig_cpp/dict_build_cli
+sig_cpp/inver_build_cli
+sig_cpp/cybuf_pack_cli
+sig_cpp/sig_build_cli
+hpcx_cpp/*.o
+hpcx_cpp/hpcx_build_cli
+hpcx_cpp/hpcx_multiband_pool_cli
+hpcx_cpp/hpcx_bench_cli
+
+sig_cpp/refs/

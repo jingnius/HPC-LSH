@@ -1,0 +1,14 @@
+{
+  "n_targets": 60000,
+  "tau": 0.5,
+  "depth": 6,
+  "min_cols": 10,
+  "num_segments": 5,
+  "adaptive_num_segments": true,
+  "adaptive_k_min": 3,
+  "adaptive_k_max": 5,
+  "max_child_ratio": 0.7,
+  "initial_split_dims": 3,
+  "max_split_dims": 8,
+  "note": "Override any field in artifact hpc_params.json then clear-limit + reset-point to rebuild."
+}
